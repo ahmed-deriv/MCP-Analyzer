@@ -2,7 +2,7 @@
 
 const { Server } = require('@modelcontextprotocol/sdk/server/index.js');
 const { StdioServerTransport } = require('@modelcontextprotocol/sdk/server/stdio.js');
-const { CallToolRequestSchema } = require('@modelcontextprotocol/sdk/types.js');
+const { CallToolRequestSchema, ListToolsRequestSchema } = require('@modelcontextprotocol/sdk/types.js');
 const path = require('path');
 const fs = require('fs');
 const GitAnalyzer = require('./git-analyzer');
@@ -22,6 +22,7 @@ class CodeAnalyzerServer {
         );
 
         this.gitAnalyzer = new GitAnalyzer();
+        this.setupTools();
         this.setupToolHandlers();
         
         // Log server startup with path information
@@ -30,6 +31,116 @@ class CodeAnalyzerServer {
         console.error(`Working directory: ${process.cwd()}`);
         console.error(`Node version: ${process.version}`);
         console.error(`Platform: ${process.platform}`);
+    }
+
+    setupTools() {
+        this.server.setRequestHandler(ListToolsRequestSchema, async () => {
+            return {
+                tools: [
+                    {
+                        name: 'get_server_info',
+                        description: 'Get information about the MCP server including version, capabilities, and status',
+                        inputSchema: {
+                            type: 'object',
+                            properties: {},
+                            required: []
+                        }
+                    },
+                    {
+                        name: 'hello_world_analyzer',
+                        description: 'Basic workspace detection and system information analyzer',
+                        inputSchema: {
+                            type: 'object',
+                            properties: {
+                                workspace: {
+                                    type: 'string',
+                                    description: 'Path to the workspace directory'
+                                }
+                            },
+                            required: []
+                        }
+                    },
+                    {
+                        name: 'run_full_analysis',
+                        description: 'Run comprehensive code analysis on the workspace',
+                        inputSchema: {
+                            type: 'object',
+                            properties: {
+                                workspace: {
+                                    type: 'string',
+                                    description: 'Path to the workspace directory'
+                                },
+                                branch: {
+                                    type: 'string',
+                                    description: 'Git branch to analyze'
+                                }
+                            },
+                            required: []
+                        }
+                    },
+                    {
+                        name: 'git_list_branches',
+                        description: 'List all git branches in the repository',
+                        inputSchema: {
+                            type: 'object',
+                            properties: {
+                                workspace: {
+                                    type: 'string',
+                                    description: 'Path to the git repository'
+                                }
+                            },
+                            required: ['workspace']
+                        }
+                    },
+                    {
+                        name: 'git_get_current_branch',
+                        description: 'Get current git branch with status information',
+                        inputSchema: {
+                            type: 'object',
+                            properties: {
+                                workspace: {
+                                    type: 'string',
+                                    description: 'Path to the git repository'
+                                }
+                            },
+                            required: ['workspace']
+                        }
+                    },
+                    {
+                        name: 'git_checkout_branch',
+                        description: 'Checkout a specific git branch',
+                        inputSchema: {
+                            type: 'object',
+                            properties: {
+                                workspace: {
+                                    type: 'string',
+                                    description: 'Path to the git repository'
+                                },
+                                branch: {
+                                    type: 'string',
+                                    description: 'Name of the branch to checkout'
+                                }
+                            },
+                            required: ['workspace', 'branch']
+                        }
+                    },
+                    {
+                        name: 'git_get_repository_info',
+                        description: 'Get comprehensive git repository information including remotes, status, and recent commits',
+                        inputSchema: {
+                            type: 'object',
+                            properties: {
+                                workspace: {
+                                    type: 'string',
+                                    description: 'Path to the git repository'
+                                }
+                            },
+                            required: ['workspace']
+                        }
+                    }
+                ]
+            };
+        });
     }
 
     setupToolHandlers() {
