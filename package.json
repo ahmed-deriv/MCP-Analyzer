@@ -2,7 +2,7 @@
   "name": "mcp-code-analyzer",
   "displayName": "MCP Code Analyzer",
   "description": "Comprehensive code analysis using MCP server",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "mcp-analyzer",
   "engines": {
     "vscode": "^1.74.0"
@@ -33,6 +33,26 @@
       {
         "command": "mcpAnalyzer.runHelloWorld",
         "title": "Run Hello World Analyzer",
+        "category": "MCP Analyzer"
+      },
+      {
+        "command": "mcpAnalyzer.listBranches",
+        "title": "List Git Branches",
+        "category": "MCP Analyzer"
+      },
+      {
+        "command": "mcpAnalyzer.getCurrentBranch",
+        "title": "Show Current Git Branch",
+        "category": "MCP Analyzer"
+      },
+      {
+        "command": "mcpAnalyzer.selectBranch",
+        "title": "Select Git Branch",
+        "category": "MCP Analyzer"
+      },
+      {
+        "command": "mcpAnalyzer.getRepositoryInfo",
+        "title": "Show Git Repository Info",
         "category": "MCP Analyzer"
       }
     ],

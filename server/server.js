@@ -5,13 +5,14 @@ const { StdioServerTransport } = require('@modelcontextprotocol/sdk/server/stdio
 const { CallToolRequestSchema } = require('@modelcontextprotocol/sdk/types.js');
 const path = require('path');
 const fs = require('fs');
+const GitAnalyzer = require('./git-analyzer');
 
 class CodeAnalyzerServer {
     constructor() {
         this.server = new Server(
             {
                 name: 'mcp-code-analyzer',
-                version: '0.1.0',
+                version: '0.2.0',
             },
             {
                 capabilities: {
@@ -20,6 +21,7 @@ class CodeAnalyzerServer {
             }
         );
 
+        this.gitAnalyzer = new GitAnalyzer();
         this.setupToolHandlers();
         
         // Log server startup with path information
@@ -43,6 +45,14 @@ class CodeAnalyzerServer {
                     return await this.helloWorldAnalyzer(args);
                 case 'run_full_analysis':
                     return await this.runFullAnalysis(args);
+                case 'git_list_branches':
+                    return await this.gitListBranches(args);
+                case 'git_get_current_branch':
+                    return await this.gitGetCurrentBranch(args);
+                case 'git_checkout_branch':
+                    return await this.gitCheckoutBranch(args);
+                case 'git_get_repository_info':
+                    return await this.gitGetRepositoryInfo(args);
                 default:
                     throw new Error(`Unknown tool: ${name}`);
             }
@@ -57,11 +67,15 @@ class CodeAnalyzerServer {
             platform: process.platform,
             timestamp: new Date().toISOString(),
             status: 'running',
-            version: '0.1.0',
+            version: '0.2.0',
             capabilities: [
                 'get_server_info',
                 'hello_world_analyzer', 
-                'run_full_analysis'
+                'run_full_analysis',
+                'git_list_branches',
+                'git_get_current_branch',
+                'git_checkout_branch',
+                'git_get_repository_info'
             ]
         };
 
@@ -175,6 +189,189 @@ class CodeAnalyzerServer {
                 }
             ]
         };
+    }
+
+    async gitListBranches(args) {
+        const workspace = args.workspace || process.cwd();
+        
+        try {
+            await this.gitAnalyzer.initialize(workspace);
+            const result = await this.gitAnalyzer.listBranches();
+            
+            console.error('Git list branches result:', JSON.stringify(result, null, 2));
+            
+            return {
+                content: [
+                    {
+                        type: 'text',
+                        text: JSON.stringify({
+                            tool: 'git_list_branches',
+                            ...result,
+                            timestamp: new Date().toISOString()
+                        }, null, 2)
+                    }
+                ]
+            };
+        } catch (error) {
+            console.error('Git list branches error:', error.message);
+            
+            return {
+                content: [
+                    {
+                        type: 'text',
+                        text: JSON.stringify({
+                            tool: 'git_list_branches',
+                            success: false,
+                            error: error.message,
+                            workspace: workspace,
+                            timestamp: new Date().toISOString()
+                        }, null, 2)
+                    }
+                ]
+            };
+        }
+    }
+
+    async gitGetCurrentBranch(args) {
+        const workspace = args.workspace || process.cwd();
+        
+        try {
+            await this.gitAnalyzer.initialize(workspace);
+            const result = await this.gitAnalyzer.getCurrentBranch();
+            
+            console.error('Git get current branch result:', JSON.stringify(result, null, 2));
+            
+            return {
+                content: [
+                    {
+                        type: 'text',
+                        text: JSON.stringify({
+                            tool: 'git_get_current_branch',
+                            ...result,
+                            timestamp: new Date().toISOString()
+                        }, null, 2)
+                    }
+                ]
+            };
+        } catch (error) {
+            console.error('Git get current branch error:', error.message);
+            
+            return {
+                content: [
+                    {
+                        type: 'text',
+                        text: JSON.stringify({
+                            tool: 'git_get_current_branch',
+                            success: false,
+                            error: error.message,
+                            workspace: workspace,
+                            timestamp: new Date().toISOString()
+                        }, null, 2)
+                    }
+                ]
+            };
+        }
+    }
+
+    async gitCheckoutBranch(args) {
+        const workspace = args.workspace || process.cwd();
+        const branchName = args.branch;
+        
+        if (!branchName) {
+            return {
+                content: [
+                    {
+                        type: 'text',
+                        text: JSON.stringify({
+                            tool: 'git_checkout_branch',
+                            success: false,
+                            error: 'Branch name is required',
+                            workspace: workspace,
+                            timestamp: new Date().toISOString()
+                        }, null, 2)
+                    }
+                ]
+            };
+        }
+        
+        try {
+            await this.gitAnalyzer.initialize(workspace);
+            const result = await this.gitAnalyzer.checkoutBranch(branchName);
+            
+            console.error('Git checkout branch result:', JSON.stringify(result, null, 2));
+            
+            return {
+                content: [
+                    {
+                        type: 'text',
+                        text: JSON.stringify({
+                            tool: 'git_checkout_branch',
+                            ...result,
+                            timestamp: new Date().toISOString()
+                        }, null, 2)
+                    }
+                ]
+            };
+        } catch (error) {
+            console.error('Git checkout branch error:', error.message);
+            
+            return {
+                content: [
+                    {
+                        type: 'text',
+                        text: JSON.stringify({
+                            tool: 'git_checkout_branch',
+                            success: false,
+                            error: error.message,
+                            workspace: workspace,
+                            branch: branchName,
+                            timestamp: new Date().toISOString()
+                        }, null, 2)
+                    }
+                ]
+            };
+        }
+    }
+
+    async gitGetRepositoryInfo(args) {
+        const workspace = args.workspace || process.cwd();
+        
+        try {
+            await this.gitAnalyzer.initialize(workspace);
+            const result = await this.gitAnalyzer.getRepositoryInfo();
+            
+            console.error('Git get repository info result:', JSON.stringify(result, null, 2));
+            
+            return {
+                content: [
+                    {
+                        type: 'text',
+                        text: JSON.stringify({
+                            tool: 'git_get_repository_info',
+                            ...result,
+                            timestamp: new Date().toISOString()
+                        }, null, 2)
+                    }
+                ]
+            };
+        } catch (error) {
+            console.error('Git get repository info error:', error.message);
+            
+            return {
+                content: [
+                    {
+                        type: 'text',
+                        text: JSON.stringify({
+                            tool: 'git_get_repository_info',
+                            success: false,
+                            error: error.message,
+                            workspace: workspace,
+                            timestamp: new Date().toISOString()
+                        }, null, 2)
+                    }
+                ]
+            };
+        }
     }
 
     async run() {
