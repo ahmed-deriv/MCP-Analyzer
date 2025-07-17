@@ -8,13 +8,15 @@ const fs = require('fs');
 const GitAnalyzer = require('./git-analyzer');
 const SecurityAnalyzer = require('./security-analyzer');
 const MetricsAnalyzer = require('./metrics-analyzer');
+const DuplicateAnalyzer = require('./duplicate-analyzer');
+const TestAnalyzer = require('./test-analyzer');
 
 class CodeAnalyzerServer {
     constructor() {
         this.server = new Server(
             {
                 name: 'mcp-code-analyzer',
-                version: '0.4.0',
+                version: '0.6.1',
             },
             {
                 capabilities: {
@@ -26,6 +28,8 @@ class CodeAnalyzerServer {
         this.gitAnalyzer = new GitAnalyzer();
         this.securityAnalyzer = new SecurityAnalyzer();
         this.metricsAnalyzer = new MetricsAnalyzer();
+        this.duplicateAnalyzer = new DuplicateAnalyzer();
+        this.testAnalyzer = new TestAnalyzer();
         this.setupTools();
         this.setupToolHandlers();
         
@@ -275,6 +279,140 @@ class CodeAnalyzerServer {
                             },
                             required: ['workspace']
                         }
+                    },
+                    {
+                        name: 'find_duplicate_code',
+                        description: 'Find duplicate and similar code blocks across files with configurable similarity thresholds',
+                        inputSchema: {
+                            type: 'object',
+                            properties: {
+                                workspace: {
+                                    type: 'string',
+                                    description: 'Path to the project workspace'
+                                },
+                                thresholds: {
+                                    type: 'object',
+                                    description: 'Custom thresholds for duplicate detection',
+                                    properties: {
+                                        minLines: {
+                                            type: 'number',
+                                            description: 'Minimum lines for duplicate detection (default: 5)'
+                                        },
+                                        similarityThreshold: {
+                                            type: 'number',
+                                            description: 'Similarity threshold 0.0-1.0 (default: 0.8)'
+                                        },
+                                        maxFileSize: {
+                                            type: 'number',
+                                            description: 'Maximum file size to analyze in bytes (default: 1MB)'
+                                        }
+                                    }
+                                }
+                            },
+                            required: ['workspace']
+                        }
+                    },
+                    {
+                        name: 'detect_exact_duplicates',
+                        description: 'Detect exact duplicate files and code blocks using content hashing',
+                        inputSchema: {
+                            type: 'object',
+                            properties: {
+                                workspace: {
+                                    type: 'string',
+                                    description: 'Path to the project workspace'
+                                },
+                                thresholds: {
+                                    type: 'object',
+                                    description: 'Custom thresholds for exact duplicate detection',
+                                    properties: {
+                                        minLines: {
+                                            type: 'number',
+                                            description: 'Minimum lines for duplicate detection (default: 5)'
+                                        }
+                                    }
+                                }
+                            },
+                            required: ['workspace']
+                        }
+                    },
+                    {
+                        name: 'analyze_code_similarity',
+                        description: 'Analyze code similarity between files using token-based comparison',
+                        inputSchema: {
+                            type: 'object',
+                            properties: {
+                                workspace: {
+                                    type: 'string',
+                                    description: 'Path to the project workspace'
+                                },
+                                thresholds: {
+                                    type: 'object',
+                                    description: 'Custom thresholds for similarity analysis',
+                                    properties: {
+                                        similarityThreshold: {
+                                            type: 'number',
+                                            description: 'Similarity threshold 0.0-1.0 (default: 0.8)'
+                                        },
+                                        minTokens: {
+                                            type: 'number',
+                                            description: 'Minimum tokens for comparison (default: 10)'
+                                        }
+                                    }
+                                }
+                            },
+                            required: ['workspace']
+                        }
+                    },
+                    {
+                        name: 'detect_test_frameworks',
+                        description: 'Detect available test frameworks in the project (Jest, Mocha, pytest, JUnit, etc.)',
+                        inputSchema: {
+                            type: 'object',
+                            properties: {
+                                workspace: {
+                                    type: 'string',
+                                    description: 'Path to the project workspace'
+                                }
+                            },
+                            required: ['workspace']
+                        }
+                    },
+                    {
+                        name: 'run_tests',
+                        description: 'Execute tests using detected test frameworks and return results with pass/fail counts',
+                        inputSchema: {
+                            type: 'object',
+                            properties: {
+                                workspace: {
+                                    type: 'string',
+                                    description: 'Path to the project workspace'
+                                },
+                                framework: {
+                                    type: 'string',
+                                    description: 'Specific test framework to use (optional, auto-detected if not provided)'
+                                }
+                            },
+                            required: ['workspace']
+                        }
+                    },
+                    {
+                        name: 'run_test_coverage',
+                        description: 'Execute test coverage analysis and return detailed coverage metrics',
+                        inputSchema: {
+                            type: 'object',
+                            properties: {
+                                workspace: {
+                                    type: 'string',
+                                    description: 'Path to the project workspace'
+                                },
+                                framework: {
+                                    type: 'string',
+                                    description: 'Specific test framework to use for coverage (optional, auto-detected if not provided)'
+                                }
+                            },
+                            required: ['workspace']
+                        }
                     }
                 ]
             };
@@ -314,6 +452,18 @@ class CodeAnalyzerServer {
                     return await this.identifyLargeFiles(args);
                 case 'calculate_complexity_metrics':
                     return await this.calculateComplexityMetrics(args);
+                case 'find_duplicate_code':
+                    return await this.findDuplicateCode(args);
+                case 'detect_exact_duplicates':
+                    return await this.detectExactDuplicates(args);
+                case 'analyze_code_similarity':
+                    return await this.analyzeCodeSimilarity(args);
+                case 'detect_test_frameworks':
+                    return await this.detectTestFrameworks(args);
+                case 'run_tests':
+                    return await this.runTests(args);
+                case 'run_test_coverage':
+                    return await this.runTestCoverage(args);
                 default:
                     throw new Error(`Unknown tool: ${name}`);
             }
@@ -328,7 +478,7 @@ class CodeAnalyzerServer {
             platform: process.platform,
             timestamp: new Date().toISOString(),
             status: 'running',
-            version: '0.4.0',
+            version: '0.6.1',
             capabilities: [
                 'get_server_info',
                 'hello_world_analyzer', 
@@ -342,7 +492,13 @@ class CodeAnalyzerServer {
                 'run_security_scan',
                 'analyze_code_metrics',
                 'identify_large_files',
-                'calculate_complexity_metrics'
+                'calculate_complexity_metrics',
+                'find_duplicate_code',
+                'detect_exact_duplicates',
+                'analyze_code_similarity',
+                'detect_test_frameworks',
+                'run_tests',
+                'run_test_coverage'
             ]
         };
 
@@ -996,6 +1152,335 @@ class CodeAnalyzerServer {
                 ]
             };
         }
+    }
+
+    async findDuplicateCode(args) {
+        const workspace = args.workspace || process.cwd();
+        const thresholds = args.thresholds || {};
+        
+        try {
+            await this.duplicateAnalyzer.initialize(workspace, { thresholds });
+            const result = await this.duplicateAnalyzer.findDuplicates();
+            
+            console.error('Duplicate code detection result:', JSON.stringify(result, null, 2));
+            
+            return {
+                content: [
+                    {
+                        type: 'text',
+                        text: JSON.stringify({
+                            tool: 'find_duplicate_code',
+                            ...result,
+                            timestamp: new Date().toISOString()
+                        }, null, 2)
+                    }
+                ]
+            };
+        } catch (error) {
+            console.error('Duplicate code detection error:', error.message);
+            
+            return {
+                content: [
+                    {
+                        type: 'text',
+                        text: JSON.stringify({
+                            tool: 'find_duplicate_code',
+                            success: false,
+                            error: error.message,
+                            workspace: workspace,
+                            timestamp: new Date().toISOString()
+                        }, null, 2)
+                    }
+                ]
+            };
+        }
+    }
+
+    async detectExactDuplicates(args) {
+        const workspace = args.workspace || process.cwd();
+        const thresholds = args.thresholds || {};
+        
+        try {
+            await this.duplicateAnalyzer.initialize(workspace, { thresholds });
+            const result = await this.duplicateAnalyzer.findDuplicates();
+            
+            // Extract only exact duplicates information
+            const exactDuplicatesResult = {
+                success: result.success,
+                workspace: result.workspace,
+                exactDuplicates: result.exactDuplicates || [],
+                summary: {
+                    totalFiles: result.summary?.totalFiles || 0,
+                    analyzedFiles: result.summary?.analyzedFiles || 0,
+                    exactDuplicateBlocks: result.exactDuplicates?.length || 0,
+                    exactDuplicateLines: result.exactDuplicates?.reduce((sum, dup) => sum + dup.duplicateLines, 0) || 0
+                },
+                thresholds: this.duplicateAnalyzer.thresholds,
+                recommendations: result.recommendations?.filter(rec => 
+                    rec.includes('exact duplicate') || rec.includes('consolidating')
+                ) || []
+            };
+            
+            console.error('Exact duplicates detection result:', JSON.stringify(exactDuplicatesResult, null, 2));
+            
+            return {
+                content: [
+                    {
+                        type: 'text',
+                        text: JSON.stringify({
+                            tool: 'detect_exact_duplicates',
+                            ...exactDuplicatesResult,
+                            timestamp: new Date().toISOString()
+                        }, null, 2)
+                    }
+                ]
+            };
+        } catch (error) {
+            console.error('Exact duplicates detection error:', error.message);
+            
+            return {
+                content: [
+                    {
+                        type: 'text',
+                        text: JSON.stringify({
+                            tool: 'detect_exact_duplicates',
+                            success: false,
+                            error: error.message,
+                            workspace: workspace,
+                            timestamp: new Date().toISOString()
+                        }, null, 2)
+                    }
+                ]
+            };
+        }
+    }
+
+    async analyzeCodeSimilarity(args) {
+        const workspace = args.workspace || process.cwd();
+        const thresholds = args.thresholds || {};
+        
+        try {
+            await this.duplicateAnalyzer.initialize(workspace, { thresholds });
+            const result = await this.duplicateAnalyzer.findDuplicates();
+            
+            // Extract only similarity information
+            const similarityResult = {
+                success: result.success,
+                workspace: result.workspace,
+                similarDuplicates: result.similarDuplicates || [],
+                summary: {
+                    totalFiles: result.summary?.totalFiles || 0,
+                    analyzedFiles: result.summary?.analyzedFiles || 0,
+                    similarDuplicateBlocks: result.similarDuplicates?.length || 0,
+                    averageSimilarity: this.calculateAverageSimilarity(result.similarDuplicates || []),
+                    duplicatePercentage: result.summary?.duplicatePercentage || 0
+                },
+                thresholds: this.duplicateAnalyzer.thresholds,
+                recommendations: result.recommendations?.filter(rec => 
+                    rec.includes('similar') || rec.includes('refactoring')
+                ) || []
+            };
+            
+            console.error('Code similarity analysis result:', JSON.stringify(similarityResult, null, 2));
+            
+            return {
+                content: [
+                    {
+                        type: 'text',
+                        text: JSON.stringify({
+                            tool: 'analyze_code_similarity',
+                            ...similarityResult,
+                            timestamp: new Date().toISOString()
+                        }, null, 2)
+                    }
+                ]
+            };
+        } catch (error) {
+            console.error('Code similarity analysis error:', error.message);
+            
+            return {
+                content: [
+                    {
+                        type: 'text',
+                        text: JSON.stringify({
+                            tool: 'analyze_code_similarity',
+                            success: false,
+                            error: error.message,
+                            workspace: workspace,
+                            timestamp: new Date().toISOString()
+                        }, null, 2)
+                    }
+                ]
+            };
+        }
+    }
+
+    calculateAverageSimilarity(similarDuplicates) {
+        if (similarDuplicates.length === 0) return 0;
+        
+        const totalSimilarity = similarDuplicates.reduce((sum, dup) => sum + (dup.similarity || 0), 0);
+        return Math.round((totalSimilarity / similarDuplicates.length) * 100) / 100;
+    }
+
+    async detectTestFrameworks(args) {
+        const workspace = args.workspace || process.cwd();
+        
+        try {
+            await this.testAnalyzer.initialize(workspace);
+            
+            const result = {
+                success: true,
+                workspace: workspace,
+                frameworks: this.testAnalyzer.detectedFrameworks,
+                supportedFrameworks: Object.keys(this.testAnalyzer.supportedFrameworks),
+                recommendations: this.generateTestFrameworkRecommendations(this.testAnalyzer.detectedFrameworks)
+            };
+            
+            console.error('Test frameworks detection result:', JSON.stringify(result, null, 2));
+            
+            return {
+                content: [
+                    {
+                        type: 'text',
+                        text: JSON.stringify({
+                            tool: 'detect_test_frameworks',
+                            ...result,
+                            timestamp: new Date().toISOString()
+                        }, null, 2)
+                    }
+                ]
+            };
+        } catch (error) {
+            console.error('Test frameworks detection error:', error.message);
+            
+            return {
+                content: [
+                    {
+                        type: 'text',
+                        text: JSON.stringify({
+                            tool: 'detect_test_frameworks',
+                            success: false,
+                            error: error.message,
+                            workspace: workspace,
+                            timestamp: new Date().toISOString()
+                        }, null, 2)
+                    }
+                ]
+            };
+        }
+    }
+
+    async runTests(args) {
+        const workspace = args.workspace || process.cwd();
+        const framework = args.framework;
+        
+        try {
+            await this.testAnalyzer.initialize(workspace);
+            const result = await this.testAnalyzer.runTests();
+            
+            console.error('Test execution result:', JSON.stringify(result, null, 2));
+            
+            return {
+                content: [
+                    {
+                        type: 'text',
+                        text: JSON.stringify({
+                            tool: 'run_tests',
+                            ...result,
+                            timestamp: new Date().toISOString()
+                        }, null, 2)
+                    }
+                ]
+            };
+        } catch (error) {
+            console.error('Test execution error:', error.message);
+            
+            return {
+                content: [
+                    {
+                        type: 'text',
+                        text: JSON.stringify({
+                            tool: 'run_tests',
+                            success: false,
+                            error: error.message,
+                            workspace: workspace,
+                            framework: framework,
+                            timestamp: new Date().toISOString()
+                        }, null, 2)
+                    }
+                ]
+            };
+        }
+    }
+
+    async runTestCoverage(args) {
+        const workspace = args.workspace || process.cwd();
+        const framework = args.framework;
+        
+        try {
+            await this.testAnalyzer.initialize(workspace);
+            const result = await this.testAnalyzer.runCoverage();
+            
+            console.error('Test coverage result:', JSON.stringify(result, null, 2));
+            
+            return {
+                content: [
+                    {
+                        type: 'text',
+                        text: JSON.stringify({
+                            tool: 'run_test_coverage',
+                            ...result,
+                            timestamp: new Date().toISOString()
+                        }, null, 2)
+                    }
+                ]
+            };
+        } catch (error) {
+            console.error('Test coverage error:', error.message);
+            
+            return {
+                content: [
+                    {
+                        type: 'text',
+                        text: JSON.stringify({
+                            tool: 'run_test_coverage',
+                            success: false,
+                            error: error.message,
+                            workspace: workspace,
+                            framework: framework,
+                            timestamp: new Date().toISOString()
+                        }, null, 2)
+                    }
+                ]
+            };
+        }
+    }
+
+    generateTestFrameworkRecommendations(frameworks) {
+        const recommendations = [];
+        
+        if (frameworks.length === 0) {
+            recommendations.push('📦 No test frameworks detected - consider adding testing to your project');
+            recommendations.push('🧪 Recommended frameworks: Jest (JavaScript), pytest (Python), JUnit (Java)');
+            recommendations.push('✅ Testing improves code quality and reduces bugs');
+        } else {
+            recommendations.push(`✅ ${frameworks.length} test framework(s) detected`);
+            
+            const languages = [...new Set(frameworks.map(f => f.language))];
+            languages.forEach(lang => {
+                const langFrameworks = frameworks.filter(f => f.language === lang);
+                recommendations.push(`${lang}: ${langFrameworks.map(f => f.framework).join(', ')}`);
+            });
+            
+            if (frameworks.length > 1) {
+                recommendations.push('🔧 Multiple frameworks detected - consider standardizing on one per language');
+            }
+            
+            recommendations.push('🚀 Run tests regularly during development');
+            recommendations.push('📊 Consider adding code coverage analysis');
+        }
+        
+        return recommendations;
     }
 
     async run() {
